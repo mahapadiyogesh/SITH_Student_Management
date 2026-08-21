@@ -1,8 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
 import { AuthProvider } from '@/hooks/useAuth';
 import { ToastProvider } from '@/hooks/useToast';
+
 import ProtectedRoute from '@/components/ProtectedRoute';
 import AdminLayout from '@/layouts/AdminLayout';
+
 import Login from '@/pages/Login';
 import ResetPassword from '@/pages/ResetPassword';
 import Dashboard from '@/pages/Dashboard';
@@ -21,10 +24,13 @@ export default function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <BrowserRouter>
+        <BrowserRouter basename="/SITH_Student_Management">
           <Routes>
+            {/* Public Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+
+            {/* Protected Routes */}
             <Route
               element={
                 <ProtectedRoute>
@@ -44,8 +50,18 @@ export default function App() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<ComingSoon />} />
             </Route>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="*" element={<Navigate to="/login" replace />} />
+
+            {/* Default Route */}
+            <Route
+              path="/"
+              element={<Navigate to="/dashboard" replace />}
+            />
+
+            {/* Unknown Routes */}
+            <Route
+              path="*"
+              element={<Navigate to="/login" replace />}
+            />
           </Routes>
         </BrowserRouter>
       </ToastProvider>
