@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      const repo = "/SITH_Student_Management";
+      const path = window.location.pathname;
+
+      if (path.startsWith(repo)) {
+        const route = path.slice(repo.length);
+
+        window.location.replace(
+          repo + "/?redirect=" + encodeURIComponent(route)
+        );
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
