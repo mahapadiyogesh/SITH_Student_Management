@@ -14,6 +14,7 @@ import {
   Pencil,
   Users,
   TrendingUp,
+  Download,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -21,11 +22,62 @@ import { cn } from '@/utils/cn';
 import { formatDateDMY, todayStr, getWeekStart, getWeekDates, getWeekDayNames, getMonthName, getMonthDates, calcAttendancePercent } from '@/utils/date';
 import type { Student, Attendance as AttendanceType, AttendanceStatus } from '@/types/database';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import * as XLSX from 'xlsx';
 
 type Tab = 'take' | 'history' | 'weekly' | 'monthly';
 
 export default function Attendance() {
+  const { toast } = useToast();
   const [tab, setTab] = useState<Tab>('take');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('attendance')
+        .select(`
+          *,
+          students:student_id ( id, student_id, full_name )
+        `)
+        .order('attendance_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const allRecords = (data ?? []) as AttendanceWithStudent[];
+
+      const headers = [
+        'Student ID', 'Student Name', 'Batch',
+        'Attendance Date', 'Status', 'Remarks',
+      ];
+
+      const rows = allRecords.map((r) => [
+        r.students?.student_id ?? '',
+        r.students?.full_name ?? '',
+        r.batch_name ?? '',
+        r.attendance_date ?? '',
+        r.status ?? '',
+        r.remarks ?? '',
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 25 }, { wch: 15 },
+        { wch: 14 }, { wch: 12 }, { wch: 20 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `attendance_export_${today}.xlsx`);
+
+      toast('Attendance data exported successfully', 'success');
+    } catch {
+      toast('Failed to export attendance data', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const tabs = [
     { id: 'take' as Tab, label: 'Take Attendance', icon: CalendarCheck },
@@ -36,9 +88,19 @@ export default function Attendance() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Attendance</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Manage daily attendance and reports</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Attendance</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Manage daily attendance and reports</p>
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition disabled:opacity-60"
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Export Excel
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200">

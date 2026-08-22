@@ -19,6 +19,7 @@ import {
   CheckCircle,
   XCircle,
   ArrowUpDown,
+  Download,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -37,6 +38,7 @@ import {
 import type { Student, Course, Enrollment, FeePayment, PaymentMode } from '@/types/database';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import ReceiptModal, { type ReceiptData } from '@/components/ReceiptModal';
+import * as XLSX from 'xlsx';
 
 type Tab = 'collect' | 'history' | 'details' | 'pending' | 'reports';
 
@@ -56,7 +58,89 @@ interface PaymentWithDetails extends FeePayment {
 }
 
 export default function Fees() {
+  const { toast } = useToast();
   const [tab, setTab] = useState<Tab>('collect');
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Fetch ALL fee payments with enrollment, student, course details
+      const { data: payments, error } = await supabase
+        .from('fee_payments')
+        .select(`
+          *,
+          enrollments:enrollment_id (
+            id, final_fees,
+            students:student_id ( id, student_id, full_name ),
+            courses:course_id ( id, course_name, course_code )
+          )
+        `)
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const allPayments = (payments ?? []) as PaymentWithDetails[];
+
+      // Compute per-enrollment paid totals (non-voided only)
+      const paidByEnrollment: Record<string, number> = {};
+      allPayments.forEach((p) => {
+        if (!p.is_voided) {
+          const eid = p.enrollment_id;
+          paidByEnrollment[eid] = (paidByEnrollment[eid] ?? 0) + Number(p.amount);
+        }
+      });
+
+      const headers = [
+        'Student ID', 'Student Name', 'Course', 'Course Code', 'Batch',
+        'Payment Date', 'Receipt Number', 'Amount', 'Payment Mode',
+        'Payment Status', 'Reference Number', 'Remarks',
+        'Enrollment Final Fees', 'Total Paid', 'Balance',
+      ];
+
+      const rows = allPayments.map((p) => {
+        const enroll = p.enrollments;
+        const finalFees = Number(enroll?.final_fees) || 0;
+        const totalPaid = paidByEnrollment[p.enrollment_id] ?? 0;
+        const balance = Math.max(0, finalFees - totalPaid);
+        return [
+          enroll?.students?.student_id ?? '',
+          enroll?.students?.full_name ?? '',
+          enroll?.courses?.course_name ?? '',
+          enroll?.courses?.course_code ?? '',
+          '', // batch not available in this join path
+          p.payment_date ?? '',
+          p.receipt_number ?? '',
+          Number(p.amount),
+          p.payment_mode ?? '',
+          p.is_voided ? 'Voided' : 'Valid',
+          p.reference_number ?? '',
+          p.remarks ?? '',
+          finalFees,
+          totalPaid,
+          balance,
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 12 }, { wch: 15 },
+        { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 12 },
+        { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 12 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Fee Payments');
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `fees_export_${today}.xlsx`);
+
+      toast('Fee payment data exported successfully', 'success');
+    } catch {
+      toast('Failed to export fee payment data', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const tabs = [
     { id: 'collect' as Tab, label: 'Collect Payment', icon: PlusCircle },
@@ -68,9 +152,19 @@ export default function Fees() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Fees Management</h1>
-        <p className="text-sm text-slate-500 mt-0.5">Collect payments, track history, and manage fees</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Fees Management</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Collect payments, track history, and manage fees</p>
+        </div>
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition disabled:opacity-60"
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          Export Excel
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200">

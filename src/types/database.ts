@@ -1,4 +1,5 @@
 export type StudentStatus = 'Active' | 'Inactive';
+export type ParentRelationship = 'Father' | 'Mother' | 'Guardian' | 'Other';
 export type CourseStatus = 'Active' | 'Inactive';
 export type EnrollmentStatus = 'Active' | 'Exam Pending' | 'Completed' | 'Inactive';
 export type AttendanceStatus = 'Present' | 'Absent';
@@ -24,6 +25,9 @@ export interface Student {
   gender: 'Male' | 'Female' | 'Other' | null;
   address: string | null;
   admission_date: string | null;
+  parent_name: string | null;
+  parent_mobile: string | null;
+  parent_relationship: ParentRelationship | null;
   status: StudentStatus;
   created_at: string;
   updated_at: string;

@@ -11,14 +11,17 @@ import {
   Loader2,
   Users,
   AlertCircle,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
 import { cn } from '@/utils/cn';
 import type { Student } from '@/types/database';
 import StudentFormModal from '@/components/StudentFormModal';
+import ImportStudentsModal from '@/components/ImportStudentsModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import { checkStudentRelated } from '@/services/relatedRecords';
+import { exportStudentsToXlsx } from '@/utils/studentImportExport';
 
 type StatusFilter = 'All' | 'Active' | 'Inactive';
 
@@ -40,9 +43,10 @@ export default function Students() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editStudent, setEditStudent] = useState<Student | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  const [deleteChecking, setDeleteChecking] = useState(false);
 
   const fetchStudents = useCallback(async () => {
     setLoading(true);
@@ -76,6 +80,23 @@ export default function Students() {
     );
   });
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      exportStudentsToXlsx((data ?? []) as Student[]);
+      toast('Student data exported successfully', 'success');
+    } catch {
+      toast('Failed to export student data', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleConfirm = async () => {
     if (!confirmState) return;
     setConfirmLoading(true);
@@ -95,12 +116,49 @@ export default function Students() {
         if (error) throw error;
         toast('Student restored to active status', 'success');
       } else if (confirmState.type === 'delete') {
+        const studentId = confirmState.student.id;
+
+        // 1. Fetch enrollment IDs for this student
+        const { data: enrollRows, error: enrollFetchErr } = await supabase
+          .from('enrollments')
+          .select('id')
+          .eq('student_id', studentId);
+        if (enrollFetchErr) throw enrollFetchErr;
+        const enrollmentIds = (enrollRows ?? []).map((e) => e.id);
+
+        // 2. Delete all related records in dependency order
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const deletions: PromiseLike<any>[] = [
+          supabase.from('attendance').delete().eq('student_id', studentId),
+        ];
+        if (enrollmentIds.length > 0) {
+          deletions.push(
+            supabase.from('fee_payments').delete().in('enrollment_id', enrollmentIds),
+            supabase.from('exams').delete().in('enrollment_id', enrollmentIds),
+            supabase.from('certificates').delete().in('enrollment_id', enrollmentIds),
+          );
+        }
+        const results = await Promise.all(deletions);
+        for (const r of results) {
+          if (r.error) throw r.error;
+        }
+
+        // 3. Delete enrollments
+        if (enrollmentIds.length > 0) {
+          const { error } = await supabase
+            .from('enrollments')
+            .delete()
+            .eq('student_id', studentId);
+          if (error) throw error;
+        }
+
+        // 4. Delete the student
         const { error } = await supabase
           .from('students')
           .delete()
-          .eq('id', confirmState.student.id);
+          .eq('id', studentId);
         if (error) throw error;
-        toast('Student permanently deleted', 'success');
+        toast('Student and all related records permanently deleted', 'success');
       }
       setConfirmState(null);
       fetchStudents();
@@ -111,14 +169,7 @@ export default function Students() {
     }
   };
 
-  const handleDeleteClick = async (student: Student) => {
-    setDeleteChecking(true);
-    const result = await checkStudentRelated(student.id);
-    setDeleteChecking(false);
-    if (result.hasRelated) {
-      toast('This student has historical records and cannot be permanently deleted. You can deactivate the student instead.', 'error');
-      return;
-    }
+  const handleDeleteClick = (student: Student) => {
     setConfirmState({ type: 'delete', student });
   };
 
@@ -127,7 +178,7 @@ export default function Students() {
     if (confirmState.type === 'delete') {
       return {
         title: 'Delete Student',
-        message: 'This action permanently deletes this record and cannot be undone.',
+        message: 'This will permanently delete this student AND all their records including enrollments, attendance, fee payments, exams, and certificates. This action cannot be undone.',
         confirmLabel: 'Delete Permanently',
         variant: 'danger' as const,
         details: [
@@ -167,16 +218,33 @@ export default function Students() {
           <h1 className="text-xl font-bold text-slate-900">Students</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage student records and profiles</p>
         </div>
-        <button
-          onClick={() => {
-            setEditStudent(null);
-            setFormOpen(true);
-          }}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
-        >
-          <Plus className="h-4 w-4" />
-          Add Student
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition"
+          >
+            <Upload className="h-4 w-4" />
+            Import
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export
+          </button>
+          <button
+            onClick={() => {
+              setEditStudent(null);
+              setFormOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
+          >
+            <Plus className="h-4 w-4" />
+            Add Student
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -291,11 +359,10 @@ export default function Students() {
                         </button>
                         <button
                           onClick={() => handleDeleteClick(s)}
-                          disabled={deleteChecking}
-                          className="p-1.5 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition disabled:opacity-50"
+                          className="p-1.5 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition"
                           title="Delete"
                         >
-                          {deleteChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          <Trash2 className="h-4 w-4" />
                         </button>
                         {s.status === 'Active' ? (
                           <button
@@ -335,6 +402,12 @@ export default function Students() {
         onClose={() => setFormOpen(false)}
         onSaved={fetchStudents}
         student={editStudent}
+      />
+
+      <ImportStudentsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onSaved={fetchStudents}
       />
 
       <ConfirmDialog

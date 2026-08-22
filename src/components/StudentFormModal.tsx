@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Loader2, User, Hash, GraduationCap } from 'lucide-react';
+import { Loader2, User, Hash, GraduationCap, Users } from 'lucide-react';
 import Modal from '@/components/Modal';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
-import type { Student, StudentStatus, Course } from '@/types/database';
+import type { Student, StudentStatus, ParentRelationship, Course } from '@/types/database';
 
 interface StudentFormModalProps {
   open: boolean;
@@ -30,6 +30,9 @@ export default function StudentFormModal({ open, onClose, onSaved, student }: St
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [gender, setGender] = useState('');
   const [address, setAddress] = useState('');
+  const [parentName, setParentName] = useState('');
+  const [parentMobile, setParentMobile] = useState('');
+  const [parentRelationship, setParentRelationship] = useState('');
   const [admissionDate, setAdmissionDate] = useState(todayStr());
   const [status, setStatus] = useState<StudentStatus>('Active');
   const [generatedId, setGeneratedId] = useState('');
@@ -54,6 +57,9 @@ export default function StudentFormModal({ open, onClose, onSaved, student }: St
         setDateOfBirth(student.date_of_birth ?? '');
         setGender(student.gender ?? '');
         setAddress(student.address ?? '');
+        setParentName(student.parent_name ?? '');
+        setParentMobile(student.parent_mobile ?? '');
+        setParentRelationship(student.parent_relationship ?? '');
         setAdmissionDate(student.admission_date ?? todayStr());
         setStatus(student.status);
         setGeneratedId(student.student_id ?? '');
@@ -64,6 +70,9 @@ export default function StudentFormModal({ open, onClose, onSaved, student }: St
         setDateOfBirth('');
         setGender('');
         setAddress('');
+        setParentName('');
+        setParentMobile('');
+        setParentRelationship('');
         setAdmissionDate(todayStr());
         setStatus('Active');
         setGeneratedId('');
@@ -187,6 +196,9 @@ export default function StudentFormModal({ open, onClose, onSaved, student }: St
         date_of_birth: dateOfBirth || null,
         gender: (gender || null) as Student['gender'],
         address: address.trim() || null,
+        parent_name: parentName.trim() || null,
+        parent_mobile: parentMobile.trim() || null,
+        parent_relationship: (parentRelationship || null) as Student['parent_relationship'],
         admission_date: admissionDate,
         status,
       };
@@ -360,6 +372,57 @@ export default function StudentFormModal({ open, onClose, onSaved, student }: St
             rows={2}
             className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition resize-none"
           />
+        </div>
+
+        {/* Parent/Guardian Information */}
+        <div className="border border-slate-200 rounded-xl p-4 space-y-4 bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-slate-500" />
+            <h3 className="text-sm font-semibold text-slate-700">Parent / Guardian Information</h3>
+          </div>
+          <p className="text-xs text-slate-400">Optional — fill in if applicable.</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Parent/Guardian Name</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={parentName}
+                  onChange={(e) => setParentName(e.target.value)}
+                  placeholder="Parent or guardian name"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Parent/Guardian Mobile</label>
+              <input
+                type="tel"
+                value={parentMobile}
+                onChange={(e) => setParentMobile(e.target.value)}
+                placeholder="9876543210"
+                className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Relationship</label>
+            <select
+              value={parentRelationship}
+              onChange={(e) => setParentRelationship(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition bg-white"
+            >
+              <option value="">Select relationship</option>
+              <option value="Father">Father</option>
+              <option value="Mother">Mother</option>
+              <option value="Guardian">Guardian</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
         </div>
 
         <div>

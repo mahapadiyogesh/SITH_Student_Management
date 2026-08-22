@@ -18,6 +18,7 @@ import {
   CalendarCheck,
   Award,
   Eye,
+  Users,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -277,6 +278,9 @@ export default function StudentProfile() {
     { label: 'Admission Date', value: student.admission_date, icon: Calendar },
     { label: 'Status', value: student.status, icon: User },
     { label: 'Address', value: student.address, icon: MapPin },
+    { label: 'Parent/Guardian Name', value: student.parent_name, icon: Users },
+    { label: 'Parent/Guardian Mobile', value: student.parent_mobile, icon: Phone },
+    { label: 'Relationship', value: student.parent_relationship, icon: Users },
   ];
 
   const totalFinalFees = enrollments.reduce((sum, e) => sum + e.final_fees, 0);

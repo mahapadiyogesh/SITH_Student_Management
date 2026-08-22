@@ -9,6 +9,7 @@ import {
   Eye,
   Trash2,
   Ban,
+  Download,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -17,6 +18,7 @@ import type { Enrollment, Student, Course, EnrollmentStatus } from '@/types/data
 import EnrollmentFormModal from '@/components/EnrollmentFormModal';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { checkEnrollmentRelated } from '@/services/relatedRecords';
+import * as XLSX from 'xlsx';
 
 type StatusFilter = 'All' | 'Active' | 'Exam Pending' | 'Completed' | 'Inactive';
 
@@ -55,6 +57,7 @@ export default function Enrollments() {
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [deleteChecking, setDeleteChecking] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -124,6 +127,86 @@ export default function Enrollments() {
   });
 
   const statusFilters: StatusFilter[] = ['All', 'Active', 'Exam Pending', 'Completed', 'Inactive'];
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      // Fetch ALL enrollments with student/course data (no filter)
+      const { data, error } = await supabase
+        .from('enrollments')
+        .select(`
+          *,
+          students:student_id ( id, student_id, full_name ),
+          courses:course_id ( id, course_name, course_code )
+        `)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const allEnrollments = (data ?? []) as Enrollment[];
+
+      // Compute paid amounts
+      const enrollmentIds = allEnrollments.map((e) => e.id);
+      let paymentSums: Record<string, number> = {};
+      if (enrollmentIds.length > 0) {
+        const { data: payments } = await supabase
+          .from('fee_payments')
+          .select('enrollment_id, amount')
+          .eq('is_voided', false)
+          .in('enrollment_id', enrollmentIds);
+        if (payments) {
+          paymentSums = payments.reduce((acc, p) => {
+            acc[p.enrollment_id] = (acc[p.enrollment_id] ?? 0) + p.amount;
+            return acc;
+          }, {} as Record<string, number>);
+        }
+      }
+
+      const headers = [
+        'Student ID', 'Student Name', 'Course', 'Course Code',
+        'Batch', 'Joining Date', 'Default Fees', 'Discount',
+        'Final Fees', 'Paid Amount', 'Balance', 'Status',
+      ];
+
+      const rows = allEnrollments.map((e) => {
+        const paid = paymentSums[e.id] ?? 0;
+        const balance = Number(e.final_fees) - paid;
+        const student = (e as unknown as EnrollmentWithDetails).students;
+        const course = (e as unknown as EnrollmentWithDetails).courses;
+        return [
+          student?.student_id ?? '',
+          student?.full_name ?? '',
+          course?.course_name ?? '',
+          course?.course_code ?? '',
+          e.batch_name ?? '',
+          e.joining_date ?? '',
+          Number(e.default_fees_snapshot),
+          Number(e.discount),
+          Number(e.final_fees),
+          paid,
+          balance,
+          e.status,
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 12 },
+        { wch: 15 }, { wch: 14 }, { wch: 14 }, { wch: 12 },
+        { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Enrollments');
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `enrollments_export_${today}.xlsx`);
+
+      toast('Enrollment data exported successfully', 'success');
+    } catch {
+      toast('Failed to export enrollment data', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleConfirm = async () => {
     if (!confirmState) return;
@@ -202,13 +285,23 @@ export default function Enrollments() {
           <h1 className="text-xl font-bold text-slate-900">Enrollments</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage student course enrollments and fees</p>
         </div>
-        <button
-          onClick={() => setFormOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
-        >
-          <Plus className="h-4 w-4" />
-          New Enrollment
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export Excel
+          </button>
+          <button
+            onClick={() => setFormOpen(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
+          >
+            <Plus className="h-4 w-4" />
+            New Enrollment
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

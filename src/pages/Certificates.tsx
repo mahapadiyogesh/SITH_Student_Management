@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Plus, Search, Loader2, Award, AlertCircle, Eye, Edit2, Trash2,
-  X, Filter, CheckCircle, XCircle, Send,
+  X, Filter, CheckCircle, XCircle, Send, Download,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -11,6 +11,7 @@ import type { Certificate, CertificateStatus } from '@/types/database';
 import CertificateFormModal from '@/components/CertificateFormModal';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import * as XLSX from 'xlsx';
 
 // ---------- Types ----------
 
@@ -60,6 +61,7 @@ export default function Certificates() {
   const [action, setAction] = useState<ActionState | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [issueDate, setIssueDate] = useState(todayStr());
+  const [exporting, setExporting] = useState(false);
 
   // ---------- Data ----------
 
@@ -170,6 +172,67 @@ export default function Certificates() {
 
   const hasActiveFilters = search !== '' || statusFilter !== 'All' || courseFilter !== '' || batchFilter !== '';
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('certificates')
+        .select(`
+          *,
+          enrollments!inner (
+            id, batch_name, joining_date,
+            students:student_id ( id, student_id, full_name ),
+            courses:course_id ( id, course_name, course_code )
+          )
+        `)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const allCerts = (data ?? []) as CertWithDetails[];
+
+      const headers = [
+        'Certificate Number', 'Student ID', 'Student Name',
+        'Course', 'Course Code', 'Batch',
+        'Certificate Month', 'Issue Date', 'Status', 'Remarks',
+      ];
+
+      const rows = allCerts.map((cert) => {
+        const student = cert.enrollments?.students;
+        const course = cert.enrollments?.courses;
+        return [
+          cert.certificate_number ?? '',
+          student?.student_id ?? '',
+          student?.full_name ?? '',
+          course?.course_name ?? '',
+          course?.course_code ?? '',
+          cert.enrollments?.batch_name ?? '',
+          cert.certificate_month ?? '',
+          cert.issue_date ?? '',
+          cert.status ?? '',
+          cert.remarks ?? '',
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 18 }, { wch: 12 }, { wch: 25 },
+        { wch: 25 }, { wch: 12 }, { wch: 15 },
+        { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 20 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Certificates');
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `certificates_export_${today}.xlsx`);
+
+      toast('Certificate data exported successfully', 'success');
+    } catch {
+      toast('Failed to export certificate data', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ---------- Render ----------
 
   return (
@@ -180,10 +243,20 @@ export default function Certificates() {
           <h1 className="text-xl font-bold text-slate-900">Certificates</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage student course certificates</p>
         </div>
-        <button onClick={() => { setEditCert(null); setFormOpen(true); }}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition">
-          <Plus className="h-4 w-4" /> Add Certificate
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export Excel
+          </button>
+          <button onClick={() => { setEditCert(null); setFormOpen(true); }}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition">
+            <Plus className="h-4 w-4" /> Add Certificate
+          </button>
+        </div>
       </div>
 
       {/* Search */}

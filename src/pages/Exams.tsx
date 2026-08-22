@@ -11,6 +11,7 @@ import {
   X,
   Filter,
   Calendar,
+  Download,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/useToast';
@@ -20,6 +21,7 @@ import type { Exam, ExamResult } from '@/types/database';
 import ExamFormModal from '@/components/ExamFormModal';
 import Modal from '@/components/Modal';
 import ConfirmDialog from '@/components/ConfirmDialog';
+import * as XLSX from 'xlsx';
 
 // ---------- Types ----------
 
@@ -68,6 +70,7 @@ export default function Exams() {
   const [deleteExam, setDeleteExam] = useState<ExamWithDetails | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [viewExam, setViewExam] = useState<ExamWithDetails | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // ---------- Data ----------
 
@@ -201,6 +204,74 @@ export default function Exams() {
     dateFrom !== '' ||
     dateTo !== '';
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data, error } = await supabase
+        .from('exams')
+        .select(`
+          *,
+          enrollments!inner (
+            id,
+            batch_name,
+            joining_date,
+            students:student_id ( id, student_id, full_name ),
+            courses:course_id ( id, course_name, course_code )
+          )
+        `)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const allExams = (data ?? []) as ExamWithDetails[];
+
+      const headers = [
+        'Student ID', 'Student Name', 'Course', 'Course Code', 'Batch',
+        'Exam Name', 'Exam Date', 'Total Marks', 'Marks Obtained',
+        'Percentage', 'Result', 'Remarks',
+      ];
+
+      const rows = allExams.map((exam) => {
+        const student = exam.enrollments?.students;
+        const course = exam.enrollments?.courses;
+        const total = exam.total_marks ? Number(exam.total_marks) : null;
+        const obtained = exam.marks_obtained != null ? Number(exam.marks_obtained) : null;
+        const pct = total && obtained != null ? Math.round((obtained / total) * 100) : null;
+        return [
+          student?.student_id ?? '',
+          student?.full_name ?? '',
+          course?.course_name ?? '',
+          course?.course_code ?? '',
+          exam.enrollments?.batch_name ?? '',
+          exam.exam_name ?? '',
+          exam.exam_date ?? '',
+          total ?? '',
+          obtained ?? '',
+          pct != null ? `${pct}%` : '',
+          exam.result ?? '',
+          exam.remarks ?? '',
+        ];
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 12 }, { wch: 15 },
+        { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 14 },
+        { wch: 12 }, { wch: 12 }, { wch: 20 },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Exams');
+      const today = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `exams_export_${today}.xlsx`);
+
+      toast('Exam data exported successfully', 'success');
+    } catch {
+      toast('Failed to export exam data', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // ---------- Render ----------
 
   return (
@@ -211,13 +282,23 @@ export default function Exams() {
           <h1 className="text-xl font-bold text-slate-900">Exams</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage exam records and results</p>
         </div>
-        <button
-          onClick={handleAdd}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
-        >
-          <Plus className="h-4 w-4" />
-          Add Exam
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 transition disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export Excel
+          </button>
+          <button
+            onClick={handleAdd}
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
+          >
+            <Plus className="h-4 w-4" />
+            Add Exam
+          </button>
+        </div>
       </div>
 
       {/* Filters Row 1: Search + Date range */}
