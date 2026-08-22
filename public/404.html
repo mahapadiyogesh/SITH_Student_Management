@@ -2,20 +2,23 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <title>SITH Computer Class Management System</title>
     <script>
-      const repo = "/SITH_Student_Management";
-      const path = window.location.pathname;
+      // GitHub Pages SPA redirect: preserves the original route as a query
+      // parameter so the React app can navigate to the correct page.
+      (function () {
+        var repo = "/SITH_Student_Management";
+        var path = window.location.pathname;
 
-      if (path.startsWith(repo)) {
-        const route = path.slice(repo.length);
-
-        window.location.replace(
-          repo + "/?redirect=" + encodeURIComponent(route)
-        );
-      }
+        // Only redirect if the path is under the repo base and is not the root
+        if (path.indexOf(repo) === 0 && path !== repo && path !== repo + "/") {
+          var route = path.slice(repo.length);
+          window.location.replace(
+            repo + "/?redirect=" + encodeURIComponent(route)
+          );
+        }
+      })();
     </script>
   </head>
-  <body>
-    <div id="root"></div>
-  </body>
+  <body></body>
 </html>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 
 import { AuthProvider } from '@/hooks/useAuth';
 import { ToastProvider } from '@/hooks/useToast';
@@ -19,6 +19,20 @@ import Exams from '@/pages/Exams';
 import Certificates from '@/pages/Certificates';
 import Reports from '@/pages/Reports';
 import ComingSoon from '@/pages/ComingSoon';
+
+/**
+ * Root route handler for GitHub Pages SPA support.
+ * When 404.html redirects back to /?redirect=/some-route,
+ * this component navigates to that route instead of /dashboard.
+ */
+function RootRedirect() {
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect');
+  if (redirect) {
+    return <Navigate to={redirect} replace />;
+  }
+  return <Navigate to="/dashboard" replace />;
+}
 
 export default function App() {
   return (
@@ -51,10 +65,10 @@ export default function App() {
               <Route path="/settings" element={<ComingSoon />} />
             </Route>
 
-            {/* Default Route */}
+            {/* Default Route — honors ?redirect= from GitHub Pages 404 redirect */}
             <Route
               path="/"
-              element={<Navigate to="/dashboard" replace />}
+              element={<RootRedirect />}
             />
 
             {/* Unknown Routes */}
