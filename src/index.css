@@ -1,3 +1,54 @@
+/* ── Login Page Animations ── */
+@keyframes login-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes login-float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes login-drift {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(4px, -6px); }
+  66% { transform: translate(-3px, -3px); }
+}
+@keyframes login-glow-pulse {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(1.05); }
+}
+@keyframes login-card-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes login-ambient {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(12px, -8px) scale(1.04); }
+}
+@keyframes login-screen-shimmer {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.animate-login-float { animation: login-float 4s ease-in-out infinite; }
+.animate-login-float-slow { animation: login-float-slow 5s ease-in-out infinite; }
+.animate-login-drift { animation: login-drift 7s ease-in-out infinite; }
+.animate-login-glow { animation: login-glow-pulse 3s ease-in-out infinite; }
+.animate-login-card { animation: login-card-enter 0.6s ease-out both; }
+.animate-login-ambient { animation: login-ambient 10s ease-in-out infinite; }
+.animate-login-shimmer { animation: login-screen-shimmer 3s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-login-float,
+  .animate-login-float-slow,
+  .animate-login-drift,
+  .animate-login-glow,
+  .animate-login-card,
+  .animate-login-ambient,
+  .animate-login-shimmer {
+    animation: none !important;
+  }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
